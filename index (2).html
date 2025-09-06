@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+        html, body { margin: 0; padding: 0; height: 100%; font-family: 'Noto Sans KR', sans-serif; background-color: #0062f7; }
+        .container { width: 90%; max-width: 800px; /* 최대 너비를 살짝 줄여 모바일에서 더 안정적으로 보이게 함 */ margin: 0 auto; padding: 20px; box-sizing: border-box; height: 100%; display: flex; align-items: flex-start; justify-content: center; padding-top: 100px; }
+        .content-wrapper { width: 100%; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .logo { height: 130px; margin-bottom: 80px; }
+        .header h1 { font-size: 60px; color: #fff; margin: 0; text-shadow: 1px 1px 3px rgba(0,0,0,0.3); }
+        .header p { font-size: 35px; color: #eee; margin-top: 8px; }
+        
+        /* ★★★ 1. lookup-box 스타일 변경: 세로 정렬 ★★★ */
+        .lookup-box {
+            display: flex;
+            flex-direction: column; /* 아이템을 세로로 쌓음 */
+            gap: 18px; /* 아이템 사이 간격 */
+            margin-bottom: 50px;
+        }
+        #receipt-number {
+            width: 100%; /* 너비를 꽉 채움 */
+            box-sizing: border-box; /* 패딩이 너비에 포함되도록 */
+            padding: 15px;
+            font-size: 40px;
+            border: 1px solid #bdc3c7;
+            border-radius: 8px;
+            text-align: center; /* 입력 텍스트 가운데 정렬 */
+        }
+        .lookup-box button {
+            width: 100%; /* 너비를 꽉 채움 */
+            padding: 15px;
+            font-size: 40px;
+            font-weight: 700; /* 글자를 더 굵게 */
+            color: white;
+            background-color: #3498db;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        #result { background-color: white; border-radius: 8px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); min-height: 50px; }
+        #result p { margin: 12px 0; font-size: 30px; color: #34495e; border-bottom: 1px solid #ecf0f1; padding-bottom: 12px; }
+        #result p:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+        #result strong { color: #2980b9; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-weight: 700; color: white; }
+        .status-completed { background-color: #2ecc71; }
+        .status-pending { background-color: #f39c12; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content-wrapper">
+            <div class="header">
+                <img src="https://i.imgur.com/PEfmoOZ.png" alt="logo" class="logo">
+                <h1>민원 처리 현황 조회</h1>
+                <p>민원 접수 시 안내받은 접수번호를 입력해주세요.</p>
+            </div>
+            
+            <div class="lookup-box">
+                <input type="text" id="receipt-number" placeholder="접수번호를 입력하세요">
+                <button onclick="lookupComplaint()">조회하기</button>
+            </div>
+    
+            <div id="result"><p style="text-align: center; color: #95a5a6;">조회 결과가 여기에 표시됩니다.</p></div>
+        </div>
+    </div>
+
+       <script>
+        function lookupComplaint() {
+            try {
+                const receiptNumber = document.getElementById('receipt-number').value;
+                if (!receiptNumber) {
+                    alert('접수번호를 입력해주세요.');
+                    return;
+                }
+                document.getElementById('result').innerHTML = '<p style="text-align: center;">조회 중...</p>';
+                
+                google.script.run
+                    .withSuccessHandler(showResult)
+                    .withFailureHandler(showError)
+                    .getComplaintByReceiptNumber(receiptNumber);
+            } catch(e) {
+                showError({message: "페이지 스크립트 오류가 발생했습니다."});
+            }
+        }
+      
+        function showResult(response) {
+            const resultDiv = document.getElementById('result');
+            
+            if (response && response.success) {
+                const data = response.data;
+                const status = data[9] || '접수'; // J열: 처리상태
+                const statusClass = (status === '처리완료' || status === '완료') ? 'status-completed' : 'status-pending';
+                const formattedDate = data[1]; // B열: 접수일시
+                
+                // ★★★ 1. 기본적으로 표시될 내용을 먼저 구성합니다. ★★★
+                let resultHtml = `
+                    <p><strong>처리상태:</strong> <span class="status-badge ${statusClass}">${status}</span></p>
+                    <p><strong>접수번호:</strong> ${data[0]}</p>
+                    <p><strong>접수일시:</strong> ${formattedDate}</p>
+                    <p><strong>민원유형:</strong> ${data[2]}</p>
+                    <p><strong>불편사항:</strong> ${data[6]}</p>
+                    <p><strong>세부내용:</strong> ${data[7]}</p>
+                `;
+
+                // ★★★ 2. 만약 '처리완료' 상태라면, 처리자 와 처리일 정보를 추가합니다. ★★★
+                if (status === '처리완료' || status === '완료') {
+                    const completionDate = data[11] || '정보 없음'; // L열: 처리일
+                    
+                    resultHtml += `
+                        <p><strong>처리일:</strong> ${completionDate}</p>
+                    `;
+                }
+
+                resultDiv.innerHTML = resultHtml; // 최종적으로 완성된 HTML을 화면에 표시합니다.
+
+            } else {
+                const message = response ? response.message : "해당하는 접수 내역이 없습니다.";
+                resultDiv.innerHTML = `<p style="text-align: center; color: #e74c3c;"><strong>조회 실패:</strong> ${message}</p>`;
+            }
+        }
+
+        function showError(error) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<p style="text-align: center; color: #e74c3c;"><strong>오류:</strong> ${error.message}</p>`;
+        }
+    </script>
+</body>
+</html>
